@@ -171,6 +171,9 @@ int run(String s) {
             if (cc == TcEEq && v0 != v1) { pc = gpc; continue; } 
             if (cc == TcNEq && v0 == v1) { pc = gpc; continue; } 
             if (cc == TcLt && v0 <  v1) { pc = gpc; continue; } 
+            if (cc == TcLe && v0 <= v1) { pc = gpc; continue; }
+            if (cc == TcGt && v0 > v1) { pc = gpc; continue; }
+            if (cc == TcGe && v0 >= v1) { pc = gpc; continue; }
         } else if (phrCmp(7, "time;", pc)) {
             printf("time: %.3f[sec]\n", (clock() - t0) / (double) CLOCKS_PER_SEC);
         } else if (phrCmp(8, ";", pc)) {
