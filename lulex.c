@@ -109,53 +109,75 @@ int lexer(String s, int tc[])	{ // program to token
 
 int tc[N];	// token code
 
-int run(String s)
-{
+enum { TcSemi = 0, TcDot, TcWiCard, Tc0, Tc1, Tc2, Tc3, Tc4, Tc5, Tc6, Tc7, Tc8, TcEEq, TcNEq, TcLt, TcGe, TcLe, TcGt };
+
+char tcInit[] = "; . !!* 0 1 2 3 4 5 6 7 8 == != < >= <= >";
+
+// ppc is ptr pc1, wpc[] wildcard ptr token 
+int phrCmp_tc[32 * 100], ppc1, wpc[9];
+
+int phrCmp(int pid, String phr, int pc) {
+    int i0 = pid * 32, i, i1, j;
+    if(phrCmp_tc[i0 + 31] == 0) {
+        i1 = lexer(phr, &phrCmp_tc[i0]);
+        phrCmp_tc[i0 + 31] = i1;
+    }
+    i1 = phrCmp_tc[i0 + 31];
+    for(i = 0; i < i1; i++) {
+        if(phrCmp_tc[i0 + i] == TcWiCard) {
+            i++;
+            j = phrCmp_tc[i0 + i] - Tc0; // get number of next token
+            wpc[j] = pc;
+            pc++;
+            continue;
+        }
+        if(phrCmp_tc[i0 + i] != tc[pc]) return 0; // not match
+        pc++;
+    }
+    ppc1 = pc;
+    return 1;
+}
+
+/***************************************************************************/
+
+int run(String s) {
     clock_t t0 = clock();
     int pc, pc1;
     pc1 = lexer(s, tc);
-    /********* debug ***********/
-    for(int i=0; i < pc1; i++){
-        printf("%d %s\n", tc[i], ts[tc[i]]);
-    }
-    /***************************/
-    tc[pc1++] = getTn(";", 1);	// add ;
-    tc[pc1] = tc[pc1+1] = tc[pc1+2] = tc[pc1+3] = getTn(".", 1);	// err to .
-    int semi = getTn(";", 1);
+    tc[pc1++] = TcSemi; // if txt have not ";" take it;
+    tc[pc1] = tc[pc1+1] = tc[pc1+2] = tc[pc1+3] = TcDot;	// err to .
     for (pc = 0; pc < pc1; pc++) { // find and register label
-        if (tc[pc+1] == getTn(":", 1)) {
-            var[tc[pc]] = pc+2; // store label
+        if (phrCmp(0, "!!*0:", pc)) {
+            var[tc[pc]] = ppc1; // store label
         }
     }
     // program start
     for (pc = 0; pc < pc1;) { 
-        if (tc[pc+1] == getTn("=", 1) && tc[pc+3] == semi) { // substitute
-            var[tc[pc]] = var[tc[pc + 2]];
-        } else if (tc[pc+1] == getTn("=", 1) && tc[pc+3] == getTn("+", 1) && tc[pc+5] == semi) {  // sum
-            var[tc[pc]] = var[tc[pc+2]] + var[tc[pc+4]];
-        } else if (tc[pc+1] == getTn("=", 1) && tc[pc+3] == getTn("-", 1) && tc[pc+5] == semi) {  // sub 
-            var[tc[pc]] = var[tc[pc+2]] - var[tc[pc+4]];
-        } else if (tc[pc] == getTn("print", 5) && tc[pc+2] == semi) { // print.
-            printf("%d\n", var[tc[pc+1]]);
-        } else if (tc[pc+1] == getTn(":", 1)) {	// define label
-            pc += 2; 
+        if (phrCmp(1,"!!*0 = !!*1;", pc)) { // substitute
+            var[tc[wpc[0]]] = var[tc[wpc[1]]];
+        } else if (phrCmp(2, "!!*0 = !!*1 + !!*2;", pc)) {  // sum
+            var[tc[wpc[0]]] = var[tc[wpc[1]]] + var[tc[wpc[2]]];
+        } else if (phrCmp(3, "!!*0 = !!*1 - !!*2;", pc)) {  // sub 
+            var[tc[wpc[0]]] = var[tc[wpc[1]]] - var[tc[wpc[2]]];
+        } else if (phrCmp(4, "print !!*0;", pc)) { // print.
+            printf("%d\n", var[tc[wpc[0]]]);
+        } else if (phrCmp(0, "!!*0:", pc)) {	// define label
+            // nop
+        } else if (phrCmp(5, "goto !!*0;", pc)) { // goto.
+            pc = var[tc[wpc[0]]];
             continue;
-        } else if (tc[pc] == getTn("goto", 4) && tc[pc+2] == semi) { // goto.
-            pc = var[tc[pc+1]];
-            continue;
-        } else if (tc[pc] == getTn("if", 2) && tc[pc+1] == getTn("(", 1) && tc[pc+5] == getTn(")", 1) && tc[pc+6] == getTn("goto", 4) && tc[pc+8] == semi) {	// if (...) goto.
-            int gpc = var[tc[pc+7]], v0 = var[tc[pc+2]], v1 = var[tc[pc+4]];
-            if (tc[pc + 3] == getTn("!=", 2) && v0 != v1) { pc = gpc; continue; } 
-            if (tc[pc + 3] == getTn("==", 2) && v0 == v1) { pc = gpc; continue; } 
-            if (tc[pc + 3] == getTn("<",  1) && v0 <  v1) { pc = gpc; continue; } 
-        } else if (tc[pc] == getTn("time", 4) && tc[pc+1] == semi) {
+        } else if (phrCmp(6, "if (!!*0 !!*1 !!*2) goto !!*3;", pc) && TcEEq <= tc[wpc[1]] && tc[wpc[1]] <= TcGt) {	// if (...) goto.
+            int gpc = var[tc[wpc[3]]], v0 = var[tc[wpc[0]]], cc = tc[wpc[1]], v1 = var[tc[wpc[2]]];
+            if (cc == TcEEq && v0 != v1) { pc = gpc; continue; } 
+            if (cc == TcNEq && v0 == v1) { pc = gpc; continue; } 
+            if (cc == TcLt && v0 <  v1) { pc = gpc; continue; } 
+        } else if (phrCmp(7, "time;", pc)) {
             printf("time: %.3f[sec]\n", (clock() - t0) / (double) CLOCKS_PER_SEC);
-        } else if (tc[pc] == semi) {
+        } else if (phrCmp(8, ";", pc)) {
+            // nop
         } else
             goto err;
-        while (tc[pc] != semi)
-            pc++;
-        pc++; // jump semi
+        pc = ppc1;
     }
     return 0;
 err:
@@ -168,6 +190,7 @@ err:
 int main(int argc, const char **argv) {
     unsigned char txt[N];
     int i;
+    lexer(tcInit, tc);
     if (argc >= 2) { // command line
         if (loadText((String) argv[1], txt, N) == 0) {
             run(txt);
