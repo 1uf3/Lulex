@@ -1,6 +1,0 @@
-    i = 0;
-label:
-    print i;
-    i = i + 1;
-    if (i < 500000) goto  label;
-    time;

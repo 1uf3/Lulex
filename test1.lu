@@ -1,5 +1,0 @@
-abc = 123;
-def = 456;
-ans = abc + def;
-ans = ans - 321;
-print ans;
