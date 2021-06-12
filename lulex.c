@@ -140,52 +140,150 @@ int phrCmp(int pid, String phr, int pc) {
 
 /***************************************************************************/
 
-int run(String s) {
-    clock_t t0 = clock();
-    int pc, pc1;
-    pc1 = lexer(s, tc);
-    tc[pc1++] = TcSemi; // if txt have not ";" take it;
-    tc[pc1] = tc[pc1+1] = tc[pc1+2] = tc[pc1+3] = TcDot;	// err to .
-    for (pc = 0; pc < pc1; pc++) { // find and register label
-        if (phrCmp(0, "!!*0:", pc)) {
-            var[tc[pc]] = ppc1; // store label
-        }
-    }
-    // program start
-    for (pc = 0; pc < pc1;) { 
-        if (phrCmp(1,"!!*0 = !!*1;", pc)) { // substitute
-            var[tc[wpc[0]]] = var[tc[wpc[1]]];
-        } else if (phrCmp(2, "!!*0 = !!*1 + !!*2;", pc)) {  // sum
-            var[tc[wpc[0]]] = var[tc[wpc[1]]] + var[tc[wpc[2]]];
-        } else if (phrCmp(3, "!!*0 = !!*1 - !!*2;", pc)) {  // sub 
-            var[tc[wpc[0]]] = var[tc[wpc[1]]] - var[tc[wpc[2]]];
-        } else if (phrCmp(4, "print !!*0;", pc)) { // print.
-            printf("%d\n", var[tc[wpc[0]]]);
-        } else if (phrCmp(0, "!!*0:", pc)) {	// define label
-            // nop
-        } else if (phrCmp(5, "goto !!*0;", pc)) { // goto.
-            pc = var[tc[wpc[0]]];
-            continue;
-        } else if (phrCmp(6, "if (!!*0 !!*1 !!*2) goto !!*3;", pc) && TcEEq <= tc[wpc[1]] && tc[wpc[1]] <= TcGt) {	// if (...) goto.
-            int gpc = var[tc[wpc[3]]], v0 = var[tc[wpc[0]]], cc = tc[wpc[1]], v1 = var[tc[wpc[2]]];
-            if (cc == TcEEq && v0 != v1) { pc = gpc; continue; } 
-            if (cc == TcNEq && v0 == v1) { pc = gpc; continue; } 
-            if (cc == TcLt && v0 <  v1) { pc = gpc; continue; } 
-            if (cc == TcLe && v0 <= v1) { pc = gpc; continue; }
-            if (cc == TcGt && v0 > v1) { pc = gpc; continue; }
-            if (cc == TcGe && v0 >= v1) { pc = gpc; continue; }
+enum { OpCpy = 0, OpAdd, OpSub, OpPrint, OpGoto, OpJeq, OpJne, OpzJlt, OpJlt, OpJge, OpJle, OpJgt, OpTime, OpEnd };
+
+int *ic[10000], **icq;
+
+void putIc(int op, int *p1, int *p2, int *p3, int *p4) {
+    icq[0] = (int *)op;
+    icq[1] = p1;
+    icq[2] = p2;
+    icq[3] = p3;
+    icq[4] = p4;
+    icq += 5;
+}
+
+/***************************************************************************/
+
+int compile(String s){
+    int pc, pc1, i;
+    int **icq1;
+    pc1 = lexer(s, tc) ;
+    tc[pc1++] = TcSemi;
+    tc[pc1] = tc[pc1 + 1] = tc[pc1 + 2] = tc[pc1 + 3] = TcDot;
+    icq = ic;
+    for(pc = 0; pc < pc1; ) {
+        if(phrCmp(1,"!!*0 = !!*1;", pc)){
+            putIc(OpCpy, &var[tc[wpc[0]]], &var[tc[wpc[1]]], 0, 0);
+        } else if (phrCmp(2, "!!*0 = !!*1 + !!*2;", pc)){
+            putIc(OpAdd, &var[tc[wpc[0]]], &var[tc[wpc[1]]], &var[tc[wpc[2]]], 0);
+        } else if (phrCmp(3, "!!*0 = !!*1 - !!*2;", pc)){
+            putIc(OpSub, &var[tc[wpc[0]]], &var[tc[wpc[1]]], &var[tc[wpc[2]]], 0);
+        } else if (phrCmp(4, "print !!*0;", pc)) {
+            putIc(OpPrint, &var[tc[wpc[0]]], 0, 0, 0);
+        } else if (phrCmp(5, "goto !!*0;", pc)) {
+            putIc(OpGoto, &var[tc[wpc[0]]], 0, 0, 0);
+        } else if (phrCmp(6, "if (!!*0 !!*1 !!*2) goto !!*3;", pc) && TcEEq <= tc[wpc[1]] && tc[wpc[1]] <= TcLt) {
+            putIc(OpJeq + (tc[wpc[1]] - TcEEq), &var[tc[wpc[3]]], &var[tc[wpc[0]]], &var[tc[wpc[2]]], 0);
         } else if (phrCmp(7, "time;", pc)) {
-            printf("time: %.3f[sec]\n", (clock() - t0) / (double) CLOCKS_PER_SEC);
+            putIc(OpTime, 0, 0, 0, 0);
         } else if (phrCmp(8, ";", pc)) {
-            // nop
-        } else
+        } else {
             goto err;
+        }
         pc = ppc1;
     }
-    return 0;
+    putIc(OpEnd, 0, 0, 0, 0);
+    icq1 = icq;
+    for(icq = ic; icq < icq1; icq += 5) {
+        i = (int)icq[0];
+        if (OpGoto <= i && i <= OpJgt) {
+            icq[1] = (int *) (*icq[1] + ic);
+        }
+    }
+    return icq1 - ic;
 err:
-    printf("syntax error : %s %s %s %s\n", ts[tc[pc]], ts[tc[pc+1]], ts[tc[pc+2]], ts[tc[pc+3]]);
-    return 1;
+    printf("syntax error : %s %s %s %s\n", ts[tc[pc]], ts[tc[pc + 1]], ts[tc[pc + 2]], ts[tc[pc + 3]]);
+    return -1;
+}
+
+/***************************************************************************/
+
+void exec(){
+    clock_t t0 = clock();
+    int **icp = ic;
+    while(1){
+        switch((int)icp[0]){
+            case OpCpy:
+                *icp[1] = *icp[2];
+                icp += 5;
+                continue;
+            case OpAdd:
+                *icp[1] = *icp[2] + *icp[3];
+                icp += 5;
+                continue;
+            case OpSub:
+                *icp[1] = *icp[2] - *icp[3];
+                icp += 5;
+                continue;
+            case OpPrint:
+                printf("%d\n", *icp[1]);
+                icp += 5;
+                continue;
+            case OpGoto:
+                icp = (int **) icp[1];
+                continue;
+            case OpJeq:
+                if(*icp[2] == *icp[3]) {
+                    icp = (int **) icp[1];
+                    continue;
+                }
+                icp += 5;
+                continue;
+            case OpJne:
+                if(*icp[2] != *icp[3]) {
+                    icp = (int **) icp[1];
+                    continue;
+                }
+                icp += 5;
+                continue;
+            case OpJlt:
+                if(*icp[2] < *icp[3]) {
+                    icp = (int **) icp[1];
+                    continue;
+                }
+                icp += 5;
+                continue;
+            case OpJgt:
+                if(*icp[2] > *icp[3]) {
+                    icp = (int **) icp[1];
+                    continue;
+                }
+                icp += 5;
+                continue;
+            case OpJle:
+                if(*icp[2] <= *icp[3]) {
+                    icp = (int **) icp[1];
+                    continue;
+                }
+                icp += 5;
+                continue;
+            case OpJge:
+                if(*icp[2] >= *icp[3]) {
+                    icp = (int **) icp[1];
+                    continue;
+                }
+                icp += 5;
+                continue;
+            case OpTime:
+                printf("time : %.3f[sec]\n", (clock() - t0) / (double) CLOCKS_PER_SEC);
+                icp += 5;
+                continue;
+            case OpEnd:
+                return;
+        }
+    }
+}
+
+
+/***************************************************************************/
+
+int run(String s) {
+    if(compile(s) < 0){
+        return 1;
+    }
+    exec();
+    return 0;
 }
 
 /***************************************************************************/
